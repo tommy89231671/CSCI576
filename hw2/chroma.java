@@ -16,13 +16,26 @@ public class chroma {
 	int width = 960;
 	int height = 540;
 	BufferedImage img_ans;
+
 	int chroma_key_color=0;
+	// int saturation_th=0;
+	// int value_th=0;
+	int cnt=0;
 	Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
 	double screen_width = screenSize.getWidth();
 	double screen_height = screenSize.getHeight();
-	int [] histogram = new int[6]; //red,yellow,green,light blue, blue, purple
-	float [] histogram_average = new float[6]; //red,yellow,green,light blue, blue, purple
+	int [] hue_bucket = new int[6]; //red,yellow,green,light blue, blue, purple
+	// float [][] saturation_bucket = new float[6][10];
+	// float [][] value_bucket = new float[6][10];
+
+	float [] hue_bucket_average = new float[6]; //red,yellow,green,light blue, blue, purple
+	// float [][] saturation_bucket_average = new float[6][10];
+	// float [][] value_bucket_average = new float[6][10];
+
 	int average_chroma_key_hue=0;
+	int [][] border_pixel = new int[960*540][2];
+	// float average_chroma_key_saturation=0;
+	// float average_chroma_key_value=0;
 
 	/** Read Image RGB
 	 *  Reads the image of given width and height at the given imgPath into the provided BufferedImage.
@@ -111,15 +124,34 @@ public class chroma {
 		readImageRGB(width, height, args[1], background_img);
 
 	}
-	public void color_histogram(float hue){
-		int tmp=(int)Math.round(hue/60);
-		if (tmp==6){
-			histogram[0]++;
-			histogram_average[0]=histogram_average[0]+hue;
+	public void color_histogram(float[] hsv){
+		int index=(int)Math.round(hsv[0]/60);
+		// int saturation_index=(int)Math.floor(hsv[1]*10);
+		// int value_index=(int)Math.floor(hsv[2]*10);
+		// if (saturation_index==10){
+		// 	saturation_index=9;
+		// }
+		// if (value_index==10){
+		// 	value_index=9;
+		// }
+		if (index==6){
+			hue_bucket[0]++;
+			// saturation_bucket[0][saturation_index]++;
+			// value_bucket[0][value_index]++;
+
+			hue_bucket_average[0]+=hsv[0];
+			// saturation_bucket_average[0][saturation_index]+=hsv[1];
+			// value_bucket_average[0][value_index]+=hsv[2];
+			// saturation_bucket[0][saturation_index]++;
 		}
 		else{
-			histogram[tmp]++;
-			histogram_average[tmp]=histogram_average[tmp]+hue;
+			hue_bucket[index]++;
+			// saturation_bucket[index][saturation_index]++;
+			// value_bucket[index][value_index]++;
+
+			hue_bucket_average[index]=hue_bucket_average[index]+hsv[0];
+			// saturation_bucket_average[index][saturation_index]+=hsv[1];
+			// value_bucket_average[index][value_index]+=hsv[2];
 		}
 	}
 	public void front_img_HSV(){
@@ -132,7 +164,7 @@ public class chroma {
 
 				rgb_list=rgb_parse(tmp_rgb);
 				hsv=rgb_to_HSV(rgb_list);
-				color_histogram(hsv[0]);
+				color_histogram(hsv);
 				// System.out.println("R: "+rgb_list[0]+" G: "+rgb_list[1]+" B: "+rgb_list[2]);
 				// System.out.println("H: "+hsv[0]+" S: "+hsv[1]+" V: "+hsv[2]);
 				// System.out.println("Press Any Key To Continue...");
@@ -141,16 +173,67 @@ public class chroma {
 		}
 
 		for (int i = 1; i <6; i++){
-			if (histogram[i]>histogram[chroma_key_color]){
+			if (hue_bucket[i]>hue_bucket[chroma_key_color]){
 				chroma_key_color=i;
 			}
-			average_chroma_key_hue=(int)(histogram_average[chroma_key_color]/histogram[chroma_key_color]);
-			// System.out.println(i+": "+ histogram[i]);
+
+			// System.out.println(i+": "+ hue_bucket[i]);
 		}
+		average_chroma_key_hue=(int)(hue_bucket_average[chroma_key_color]/hue_bucket[chroma_key_color]);
+		// for (int i = 1; i <10;i++){
+		// 	if (saturation_bucket[chroma_key_color][i]>saturation_bucket[chroma_key_color][saturation_th]){
+		// 		saturation_th=i;
+		// 	}
+		// 	if (value_bucket[chroma_key_color][i]>value_bucket[chroma_key_color][value_th]){
+		// 		value_th=i;
+		// 	}
+		// }
+		// average_chroma_key_saturation=saturation_bucket_average[chroma_key_color][saturation_th]/saturation_bucket[chroma_key_color][saturation_th];
+		// average_chroma_key_value=value_bucket_average[chroma_key_color][value_th]/value_bucket[chroma_key_color][value_th];
+
 		System.out.println("Chroma key color: "+ chroma_key_color+"average hue: "+average_chroma_key_hue);
+		// System.out.println("saturation average: "+ average_chroma_key_saturation+"value average: "+average_chroma_key_value);
 
 	}
+	public int antiali_find_average(int x,int y){
+		// int[] tmp_x_array=new int[3];
+		// int[] tmp_y_array=new int[3];
+		// System.out.println("x:"+(x)+" y:"+(y));
+		int counter=0;
+		int tmp_rgb=0;
+		int tmp_r=0;
+		int tmp_g=0;
+		int tmp_b=0;
 
+		for (int i=-3;i<4;i++){
+			for (int j=-3;j<4;j++){
+
+				if (x+i>=0 && x+i<width){
+					if (y+j>=0 && y+j<height){
+						tmp_rgb=background_img.getRGB(x+i,y+j);
+						tmp_b+=tmp_rgb & 0xff;
+						tmp_g+=tmp_rgb >> 8 & 0xff;
+						tmp_r+=tmp_rgb >> 16 & 0xff;
+
+						counter++;
+					}
+				}
+			}
+		}
+		int pix = 0xff000000 | ((tmp_r/counter & 0xff) << 16) | ((tmp_g/counter & 0xff) << 8) | (tmp_b/counter & 0xff);
+
+
+		return pix;
+
+	}
+	public void antialiasing(){
+		System.out.println("cnt: "+cnt);
+		for (int i=0;i<cnt;i++){
+			int x=border_pixel[cnt][0];
+			int y=border_pixel[cnt][1];
+			background_img.setRGB(x,y,antiali_find_average(x,y));
+		}
+	}
 	public int[] rgb_parse(int rgb){
 		int [] return_list = new int[3];
 		return_list[0]=rgb >> 16 & 0xff;
@@ -205,6 +288,7 @@ public class chroma {
 
 	}
 	public void key_in(){
+
 		for(int y=0; y<height; y++){
 			for(int x=0; x<width; x++){
 				int tmp_rgb=0;
@@ -222,19 +306,35 @@ public class chroma {
 				else if ((chroma_key_color==0)){
 					if (average_chroma_key_hue-threshold<0){
 						if(!(hsv[0]<=average_chroma_key_hue+threshold || hsv[0]>360+average_chroma_key_hue-threshold)){
-							background_img.setRGB(x,y,tmp_rgb);
+							// if (hsv[1]<=average_chroma_key_saturation&&hsv[2]<=average_chroma_key_value){
+								background_img.setRGB(x,y,tmp_rgb);
+								border_pixel[cnt][0]=x;
+								border_pixel[cnt][1]=y;
+								cnt++;
+							// }
+
 						}
 					}
 					else{
 						if (!((hsv[0]>=(average_chroma_key_hue-threshold))&&(hsv[0]<=(average_chroma_key_hue+threshold)))){
-							background_img.setRGB(x,y,tmp_rgb);
+							// if (hsv[1]<=average_chroma_key_saturation&&hsv[2]<=average_chroma_key_value){
+								background_img.setRGB(x,y,tmp_rgb);
+								border_pixel[cnt][0]=x;
+								border_pixel[cnt][1]=y;
+								cnt++;
+							// }
 						}
 					}
 
 				}
 				else if(chroma_key_color==1){
 					if (!((hsv[0]>=(average_chroma_key_hue-threshold))&&(hsv[0]<=(average_chroma_key_hue+threshold))||(hsv[0]==0 || hsv[1]==0))){
-						background_img.setRGB(x,y,tmp_rgb);
+						// if (hsv[1]<=average_chroma_key_saturation&&hsv[2]<=average_chroma_key_value){
+							background_img.setRGB(x,y,tmp_rgb);
+							border_pixel[cnt][0]=x;
+							border_pixel[cnt][1]=y;
+							cnt++;
+						// }
 						// System.out.println("x,y: "+x+","+y);
 						// System.out.println("H: "+hsv[0]+" S: "+hsv[1]+" V: "+hsv[2]);
 						// System.out.println("Press Any Key To Continue...");
@@ -243,7 +343,12 @@ public class chroma {
 				}
 				else{
 					if (!((hsv[0]>=(average_chroma_key_hue-threshold))&&(hsv[0]<=(average_chroma_key_hue+threshold)))){
-						background_img.setRGB(x,y,tmp_rgb);
+						// if (hsv[1]>=average_chroma_key_saturation && hsv[2]>=average_chroma_key_value){
+							background_img.setRGB(x,y,tmp_rgb);
+							border_pixel[cnt][0]=x;
+							border_pixel[cnt][1]=y;
+							cnt++;
+						// }
 					}
 				}
 
@@ -261,6 +366,7 @@ public class chroma {
 		ren.read_background_img(args);
 		ren.front_img_HSV();
 		ren.key_in();
+		ren.antialiasing();
 		ren.showIms();
 
 	}
